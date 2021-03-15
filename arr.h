@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #if !defined(NDEBUG)
 
@@ -41,18 +42,52 @@
       (VAR);\
       VAR = arr_prev((ARR), VAR))
 
+typedef int (arr_cmp_proc)(const void *, const void*);
+
 struct arr {
-  union { size_t _cap; const size_t cap; };
-  union { size_t _cnt; const size_t cnt; };
-  union { size_t _esz; const size_t esz; };
-  union { void * _mem; const void * const mem; };
+  size_t cap;
+  size_t cnt;
+  size_t esz;
+  void * mem;
 };
+
+int arr_init(struct arr *arr, size_t esz);
+
+int arr_reinit(struct arr *arr, size_t esz);
+
+void arr_cleanup(struct arr * arr);
+
+struct arr arr_new(size_t esz);
+
+int arr_copy(struct arr *dst, struct arr *src);
+
+int arr_move(struct arr *dst, struct arr *src);
 
 int arr_realloc(struct arr * arr, size_t ncap);
 
-int arr_grow(struct arr * arr);
+int arr_grow(struct arr *arr);
 
 void arr_zero(struct arr *arr);
+
+/* use this instead of a direct access in case we
+ * do pointer tagging */
+static inline
+void *arr_mem(struct arr *arr) 
+{
+  return arr->mem;
+}
+
+static inline 
+bool arr_alive(const struct arr *arr) 
+{
+  return (arr->esz != 0);
+}
+
+static inline
+bool arr_empty(const struct arr *arr)
+{
+  return (arr->cnt == 0);
+}
 
 /* internal indexing function */
 static inline
@@ -60,7 +95,7 @@ void * _arr_at(const struct arr * arr, size_t idx) {
   /* allow to index 'end' i.e. one past the last element */
   ARR_ASSERT_MSG(idx <= arr->cap, 
       "Index out of bounds, idx=%zu, arr->cap=%zu", idx, arr->cap);
-  return (void*)((uint8_t*)arr->_mem + idx * arr->esz);
+  return (void*)((uint8_t*)arr->mem + idx * arr->esz);
 }
 
 /* standard indexing
@@ -105,13 +140,13 @@ void * arr_imp_sat(const struct arr * arr, size_t idx)
   return _arr_at(arr, idx);
 }
 
-void * arr_lst(const struct arr * arr);
-
-void * arr_fst(const struct arr * arr);
-
 void * arr_push(struct arr * arr, const void * e);
 
 void arr_pop(struct arr * arr);
+
+void * arr_lst(const struct arr * arr);
+
+void * arr_fst(const struct arr * arr);
 
 bool arr_belongs(const struct arr *arr, const void *e);
 
@@ -125,17 +160,11 @@ void arr_append(struct arr * dst, struct arr * src);
 
 void arr_prepend(struct arr * dst, struct arr * src);
 
-void arr_qsort(struct arr * arr, int (*cmp)(const void *, const void *) );
-
-int arr_init(struct arr * arr, size_t esz);
-
-struct arr arr_new(size_t esz);
+void arr_qsort(struct arr * arr, arr_cmp_proc *cmp);
 
 void arr_swap(struct arr *arr, void *a, void *b);
 
 void arr_clear(struct arr *arr);
-
-int arr_cleanup(struct arr * arr);
 
 void arr_assign(struct arr * dst, struct arr * src);
 
@@ -147,13 +176,10 @@ int arr_remove(struct arr *arr, void *e);
 
 int arr_insert_at(struct arr *arr, void *e, size_t idx);
 
-void arr_uniq(struct arr * arr, int (*cmp)(const void *, const void *b));
+void arr_uniq(struct arr * arr, arr_cmp_proc *cmp);
 
-void * arr_find(const struct arr * arr, const void *key, int (*cmp)(const void *, const void *));
+void * arr_find(const struct arr * arr, const void *key, arr_cmp_proc *cmp);
 
-int arr_copy(struct arr *dst, struct arr *src);
-
-int arr_move(struct arr *dst, struct arr *src);
 
 int arr_resize(struct arr *arr, size_t ncnt);
 
@@ -207,17 +233,18 @@ static void _arr_expand(struct arr * arr, size_t idx, size_t n) {
   memset(from, 0, (to - from));
 }
 
-int arr_realloc(struct arr * arr, size_t ncap) {
+int arr_realloc(struct arr * arr, size_t ncap) 
+{
   ARR_DBG_PROC_HDR;
   ARR_ASSERT(arr);
 
   ARR_ASSERT(arr->cnt <= ncap);
 
-  void * nmem = realloc(arr->_mem, ncap * arr->esz);
+  void * nmem = realloc(arr->mem, ncap * arr->esz);
 
   //ARR_ARR_ASSERT((ncap == 0) == (nmem == 0));
-  arr->_cap = ncap;
-  arr->_mem = nmem;
+  arr->cap = ncap;
+  arr->mem = nmem;
   return 0;
 }
 
@@ -226,8 +253,9 @@ int arr_grow(struct arr * arr) {
   return arr_realloc(arr, arr->cap ? arr->cap * 2 : 1);
 }
 
-void arr_zero(struct arr *arr) {
-  memset(arr->_mem, '\0', arr->cap * arr->esz);
+void arr_zero(struct arr *arr) 
+{
+  memset(arr->mem, 0, arr->cap * arr->esz);
 }
 
 void * arr_lst(const struct arr * arr) {
@@ -257,24 +285,30 @@ void * arr_push(struct arr * arr, const void * e) {
   else
     memset( _arr_at(arr, arr->cnt), 0, arr->esz );
 
-  return _arr_at(arr, arr->_cnt++);
+  return _arr_at(arr, arr->cnt++);
 }
 
 
 void arr_pop(struct arr * arr) {
   ARR_DBG_PROC_HDR;
   ARR_ASSERT(arr && arr->cnt);
-  arr->_cnt--;
+  arr->cnt--;
 }
 
-bool arr_belongs(const struct arr *arr, const void *e) {
-  if((void*)arr->mem <= e && e <= (void*)arr_lst(arr)) {}
-  else return false;
+bool arr_belongs(const struct arr *arr, const void *e) 
+{
+  ARR_ASSERT(arr && arr_alive(arr));
 
-  size_t d =  _pdiff(e, arr->mem);
+  if(arr->cnt == 0)
+    return false;
 
-  if(d % arr->esz == 0) {}
-  else return false;
+  if(!(arr_fst(arr) <= e && e <= arr_lst(arr)))
+    return false;
+
+  size_t d = _pdiff(e, arr->mem);
+
+  if(!(d % arr->esz == 0))
+    return false;
 
   return true;
 }
@@ -336,57 +370,83 @@ void arr_prepend(struct arr * dst, struct arr * src) {
   arr_realloc(dst, 100);
 
   _arr_expand(dst, 0, src->cnt);
-  dst->_cnt += src->cnt;
+  dst->cnt += src->cnt;
 
-  assert(dst->_mem && src->_mem);
+  assert(dst->mem && src->mem);
 
-  memcpy(dst->_mem, src->_mem, src->cnt * src->esz);
+  memcpy(dst->mem, src->mem, src->cnt * src->esz);
 }
 
 
-void arr_qsort(struct arr * arr, int (*cmp)(const void *, const void *) ) {
+void arr_qsort(struct arr * arr, arr_cmp_proc *cmp) 
+{
   ARR_DBG_PROC_HDR;
-  qsort(arr->_mem, arr->cnt, arr->esz, cmp);
+  qsort(arr->mem, arr->cnt, arr->esz, cmp);
 }
 
-int arr_init(struct arr * arr, size_t esz) {
-  ARR_DBG_PROC_HDR;
+int arr_init(struct arr * arr, size_t esz) 
+{
   ARR_ASSERT(arr && esz);
-  memset(arr, 0, sizeof(struct arr));
-
-  arr->_esz = esz;
-  arr->_mem = NULL;
+  memset(arr, 0, sizeof(*arr));
+  arr->esz = esz;
   return 0;
 }
 
-struct arr arr_new(size_t esz) {
-  struct arr arr;
-  ARR_ASSERT( arr_init(&arr, esz) == 0 );
-  return arr;
-}
-
-void arr_swap(struct arr *arr, void *a, void *b) {
-  ARR_ASSERT(arr->mem <= a && a <= arr_lst(arr));
-  ARR_ASSERT(arr->mem <= b && b <= arr_lst(arr));
-
-  uint8_t tmp[arr->esz];
-
-  memcpy(tmp, a, arr->esz);
-  memcpy(b,   a, arr->esz);
-  memcpy(b, tmp, arr->esz);
+void arr_cleanup(struct arr * arr) 
+{
+  arr_realloc(arr, 0);
+  memset(arr, 0, sizeof(*arr));
 }
 
 void arr_clear(struct arr *arr) {
-  ARR_DBG_PROC_HDR;
-  arr->_cnt = 0;
-  ARR_ASSERT( !arr_realloc(arr, 0) );
+  memset(arr->mem, 0, arr->cnt * arr->esz);
+  arr->cnt = 0;
 }
 
-int arr_cleanup(struct arr * arr) {
-  ARR_DBG_PROC_HDR;
-  
-  arr->_cnt = 0;
-  return arr_realloc(arr, 0);
+int arr_reinit(struct arr *arr, size_t esz) 
+{
+  ARR_ASSERT(arr && esz);
+
+  if(arr_alive(arr)) {
+    arr_clear(arr);
+
+    if(arr->esz == esz)
+      return 0;
+
+    arr_cleanup(arr);
+    return arr_init(arr, esz);
+  }
+
+  return arr_init(arr, esz);
+}
+
+struct arr arr_new(size_t esz) 
+{
+  struct arr arr = {};
+  int rc = arr_init(&arr, esz);
+  ARR_ASSERT(rc == 0);
+  return arr;
+}
+
+void arr_swap(struct arr *arr, void *a, void *b) 
+{
+  ARR_ASSERT(arr->mem <= a && a <= arr_lst(arr));
+  ARR_ASSERT(arr->mem <= b && b <= arr_lst(arr));
+
+#define _ARR_XORSWAP(T)\
+  { *(T*)a ^= *(T*)b; *(T*)b ^= *(T*)a; *(T*)a ^= *(T*)b; return; }
+  switch(arr->esz) {
+    case 8: _ARR_XORSWAP(uint64_t);
+    case 4: _ARR_XORSWAP(uint32_t);
+    case 2: _ARR_XORSWAP(uint16_t);
+    case 1: _ARR_XORSWAP(uint8_t);
+  }
+#undef _ARR_XORSWAP
+
+  uint8_t tmp[arr->esz];
+  memcpy(tmp, a, arr->esz);
+  memcpy(b,   a, arr->esz);
+  memcpy(b, tmp, arr->esz);
 }
 
 void arr_assign(struct arr * dst, struct arr * src) {
@@ -418,7 +478,7 @@ int arr_remove_at(struct arr * arr, size_t idx) {
   ARR_ASSERT(arr->cnt);
 
   _arr_collapse(arr, idx, 1);
-  arr->_cnt--;
+  arr->cnt--;
 
   return 0;
 }
@@ -433,7 +493,7 @@ int arr_insert_at(struct arr *arr, void *e, size_t idx) {
     ARR_ASSERT( !arr_grow(arr) );
 
   _arr_expand(arr, idx, 1);
-  arr->_cnt++;
+  arr->cnt++;
 
   if(e) 
     memcpy( _arr_at(arr, idx), e, arr->esz );
@@ -444,63 +504,65 @@ int arr_insert_at(struct arr *arr, void *e, size_t idx) {
 }
 
 
-void arr_uniq(struct arr * arr, int (*cmp)(const void *, const void *b)) {
+void arr_uniq(struct arr * arr, arr_cmp_proc *cmp) {
   ARR_DBG_PROC_HDR;
   void *e, *lkp;
 
   for(e = arr_lst(arr); e; e = arr_prev(arr, e)) {
     for(lkp = arr_prev(arr, e); lkp; lkp = arr_prev(arr, lkp)) {
-      if( cmp(e, lkp) == 0 ) { arr_remove(arr, e); break; }
+      if(cmp(e, lkp) == 0) {
+        arr_remove(arr, e); break;
+      }
     }
   }
 }
 
-void * arr_find(const struct arr * arr, const void *key, int (*cmp)(const void *, const void *)) {
+void * arr_find(const struct arr * arr, const void *key, arr_cmp_proc *cmp) {
   arr_for(void, e, arr) {
-    if( !cmp(key, e) ) return e;
+    if( !cmp(key, e) ) 
+      return e;
   }
   return NULL;
 }
 
 int arr_copy(struct arr *dst, struct arr *src) 
 {
+  int ret = 0;
   ARR_ASSERT(dst && src);
-  ARR_ASSERT(src->esz)
-  int rc = -1;
+  ARR_ASSERT(arr_alive(src));
 
-  if(dst->esz) 
-    arr_cleanup(dst);
-
-  if(arr_init(dst, src->esz)) 
+  if(arr_reinit(dst, src->esz))
     goto exit;
 
-  if(arr_realloc(dst, src->cap)) 
+  if(arr_resize(dst, src->cnt))
     goto exit;
 
-  memcpy(dst->_mem, src->_mem, src->esz * src->cap);
-  dst->_cnt = src->cnt;
-  dst->_cap = src->cap;
- exit:
-  return rc;
+  memcpy(arr_mem(dst), arr_mem(src), src->esz * src->cnt);
+
+  ret = 0; 
+exit:
+  return ret;
 }
 
 static void _arr_zero_range(struct arr *arr, size_t b, size_t e) {
   ARR_ASSERT( b <= e );
-  memset((uint8_t*)arr->_mem + b * arr->esz, '\0', e - b);
+  memset((uint8_t*)arr->mem + b * arr->esz, '\0', e - b);
 }
 
-int arr_resize(struct arr *arr, size_t ncnt) {
-  int rc;
+int arr_resize(struct arr *arr, size_t ncnt) 
+{
+  int ret = -1;
   if(arr->cnt < ncnt)  {
-    if((rc = arr_realloc(arr, ncnt)))
+    if(arr_realloc(arr, ncnt))
       goto exit;
 
     _arr_zero_range(arr, arr->cnt, ncnt);
   }
-  arr->_cnt = ncnt;
+  arr->cnt = ncnt;
 
+  ret = 0;
  exit:
-  return rc;
+  return ret;
 }
 
 
