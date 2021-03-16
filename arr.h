@@ -1,9 +1,39 @@
+/*
+ * The MIT License (MIT)
+ *
+ *  Copyright (c) Kacper Kokot
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ *  THE SOFTWARE.
+ */
+
+/*
+ * Single header generic dynamic array.
+ * Define KK_ARR_IMPL to spawn the implementation.
+ */
+
 #ifndef _KK_ARR_H_
 #define _KK_ARR_H_
 
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #if !defined(NDEBUG)
 
@@ -43,6 +73,8 @@
       (VAR);\
       VAR = arr_prev((ARR), VAR))
 
+#define arr_att(TYPE, ARR, IDX) ((TYPE*)arr_at(ARR, IDX))
+
 typedef int (arr_cmp_proc)(const void *, const void*);
 
 struct arr {
@@ -54,6 +86,9 @@ struct arr {
 
 ARR_API
 int arr_init(struct arr *arr, size_t esz);
+
+ARR_API
+int arr_init_resize(struct arr *arr, size_t esz, size_t cnt);
 
 ARR_API
 int arr_reinit(struct arr *arr, size_t esz);
@@ -85,6 +120,12 @@ static inline
 void *arr_mem(struct arr *arr) 
 {
   return arr->mem;
+}
+
+static inline 
+size_t arr_size(const struct arr *arr)
+{
+  return arr->cnt * arr->esz; 
 }
 
 static inline 
@@ -170,6 +211,8 @@ void * arr_next(const struct arr * arr, const void *e);
 
 void arr_append(struct arr * dst, struct arr * src);
 
+void arr_append_raw(struct arr * dst, const void *data, size_t cnt);
+
 void arr_prepend(struct arr * dst, struct arr * src);
 
 void arr_qsort(struct arr * arr, arr_cmp_proc *cmp);
@@ -188,6 +231,7 @@ void arr_uniq(struct arr * arr, arr_cmp_proc *cmp);
 
 void * arr_find(const struct arr * arr, const void *key, arr_cmp_proc *cmp);
 
+char ** arr_findstr(const struct arr * arr, const void *key);
 
 int arr_resize(struct arr *arr, size_t ncnt);
 
@@ -237,8 +281,28 @@ int arr_init(struct arr * arr, size_t esz)
 }
 
 ARR_API
+int arr_init_resize(struct arr *arr, size_t esz, size_t init_cnt) 
+{
+  int ret = -1;
+
+  if(arr_init(arr, esz)) 
+    goto exit;
+
+  if(arr_resize(arr, init_cnt))
+    goto exit;
+
+  // FIXME: zeroing on resize does not seem to work that well
+  arr_zero(arr);
+
+  ret = 0;
+exit:
+  return ret;
+}
+
+ARR_API
 void arr_cleanup(struct arr * arr) 
 {
+  arr_clear(arr);
   arr_realloc(arr, 0);
   memset(arr, 0, sizeof(*arr));
 }
@@ -421,6 +485,21 @@ void arr_append(struct arr * dst, struct arr * src) {
   }
 }
 
+void arr_append_raw(struct arr * dst, const void *data, size_t cnt)
+{
+  size_t prev_cnt = dst->cnt;
+
+  if(!cnt)
+    return;
+  else
+    assert(data);
+
+  arr_resize(dst, prev_cnt + cnt);
+
+  memcpy(arr_at(dst, prev_cnt), data, cnt * dst->esz);
+}
+
+
 void arr_prepend(struct arr * dst, struct arr * src) {
   ARR_DBG_PROC_HDR;
   assert(dst->esz == src->esz);
@@ -528,6 +607,14 @@ void * arr_find(const struct arr * arr, const void *key, arr_cmp_proc *cmp)
   arr_for(void, e, arr) {
     if( !cmp(key, e) ) 
       return e;
+  }
+  return NULL;
+}
+
+char ** arr_findstr(const struct arr * arr, const void *key)
+{
+  arr_for(char *, e, arr) {
+    if( !strcmp(key, *e) ) return e;
   }
   return NULL;
 }
