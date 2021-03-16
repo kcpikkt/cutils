@@ -1,32 +1,3 @@
-/*
- * The MIT License (MIT)
- *
- *  Copyright (c) Kacper Kokot
- *
- *  Permission is hereby granted, free of charge, to any person obtaining a copy
- *  of this software and associated documentation files (the "Software"), to deal
- *  in the Software without restriction, including without limitation the rights
- *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *  copies of the Software, and to permit persons to whom the Software is
- *  furnished to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- *  THE SOFTWARE.
- */
-
-/*
- * Single header generic dynamic array.
- * Define KK_ARR_IMPL to spawn the implementation.
- */
-
 #ifndef _KK_ARR_H_
 #define _KK_ARR_H_
 
@@ -98,6 +69,9 @@ void arr_cleanup(struct arr * arr);
 
 ARR_API
 struct arr arr_new(size_t esz);
+
+ARR_API
+struct arr arr_new_place(void *mem, size_t esz, size_t cnt);
 
 ARR_API
 int arr_copy(struct arr *dst, struct arr *src);
@@ -337,6 +311,19 @@ struct arr arr_new(size_t esz)
   struct arr arr = {};
   int rc = arr_init(&arr, esz);
   ARR_ASSERT(rc == 0);
+  return arr;
+}
+
+ARR_API
+struct arr arr_new_place(void *mem, size_t esz, size_t cnt)
+{
+  struct arr arr = {
+    .mem = mem,
+    .esz = esz,
+    .cnt = cnt,
+    .cap = 0,
+  };
+
   return arr;
 }
 
