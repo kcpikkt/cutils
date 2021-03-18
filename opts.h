@@ -1,4 +1,3 @@
-
 /*
  * The MIT License (MIT)
  *
@@ -70,7 +69,7 @@
  *     }
  *   }
  *
- *   $ make && ./a.out --three --eleven 1 2 2 -t -s 1
+ *   $ gcc main.c && ./a.out --three --eleven 1 2 2 -t -s 1
  *
  */
 
@@ -78,6 +77,7 @@
 #define _KK_OPTS_H_
 
 #include "arr.h"
+#include <stdint.h>
 
 #if !defined(NDEBUG)
 # include <stdio.h>
@@ -161,7 +161,7 @@ void opts_print(struct opt *opts, FILE *stream);
 #define _KK_OPTS_IMPL_
 
 #include <errno.h> 
-
+#include <string.h> 
 
 /* only internal, no reason for user to use this */
 #define _opts_for(OPT, OPTS) \
@@ -266,6 +266,7 @@ int opts_set(struct opt *opt, char *arg)
           arg, opt->name, opt->sname ? opt->sname : "");
       goto exit;
     }
+
   } else if(opt_is_int(opt)) {
     iarg = strtol(arg, &nptr, 10);
     if(nptr == arg || errno != 0) {
