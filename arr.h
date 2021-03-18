@@ -21,8 +21,7 @@
  *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  *  THE SOFTWARE.
  *
- * Single header generic red-black tree.
- * Define KK_RBTREE_IMPL to spawn the implementation.
+ *  Single header type generic dynamic array.
  */
 
 #ifndef _KK_ARR_H_

@@ -23,6 +23,55 @@
  *  THE SOFTWARE.
  *
  * Option parsing because getopt.h is absolutely rubbish.
+ *
+ * Example usage;
+ *
+ *   $ cat main.c
+ *
+ *   #include <stdio.h>
+ *   #define KK_ARR_IMPL
+ *   #include "arr.h"
+ *   #define KK_OPTS_IMPL
+ *   #include "opts.h"
+ *
+ *   enum { O_THREE, O_SEVEN, O_ELEVEN };
+ *
+ *   struct opt opts[] = { 
+ *     [O_THREE] = { "three", "t", OPT_NOPARAM,
+ *       .desc = "switch option, doesn't take any params."
+ *     },
+ *     [O_SEVEN] = { "seven", "s", OPT_INTEGER,
+ *       .desc = "option taking one integer parameter."
+ *     },
+ *     [O_ELEVEN] = { "eleven", NULL, OPT_MULPARAM,
+ *       .desc = "option taking multiple string params."
+ *     },
+ *     { NULL } 
+ *   };
+ *   
+ *   int main (int argc, char **argv)
+ *   {
+ *     if(opts_parse(opts, argc, argv, 0))
+ *       goto exit;
+ *   
+ *     printf("option three is %s\n",
+ *        opts_get(&opts[O_THREE], NULL) ? "set" : "not set");
+ *   
+ *     int seven_arg;
+ *     if(opts_get(&opts[O_SEVEN], &seven_arg))
+ *       printf("seven is set to %d\n", seven_arg);
+ *   
+ *     struct arr *eleven_params;
+ *     if(opts_get(&opts[O_ELEVEN], &eleven_params)) {
+ *       printf("eleven params are");
+ *       arr_for(const char *, param, eleven_params) {
+ *         printf(" '%s'", *param);
+ *       }
+ *     }
+ *   }
+ *
+ *   $ make && ./a.out --three --eleven 1 2 2 -t -s 1
+ *
  */
 
 #ifndef _KK_OPTS_H_
