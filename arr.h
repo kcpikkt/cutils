@@ -1,3 +1,30 @@
+/*
+ * The MIT License (MIT)
+ *
+ *  Copyright (c) Kacper Kokot
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ *  THE SOFTWARE.
+ *
+ * Single header generic red-black tree.
+ * Define KK_RBTREE_IMPL to spawn the implementation.
+ */
+
 #ifndef _KK_ARR_H_
 #define _KK_ARR_H_
 
@@ -225,25 +252,16 @@ void arr_print(struct arr *arr, const char * name);
 
 #ifdef KK_ARR_IMPL
 
+#ifndef _KK_ARR_IMPL_
+#define _KK_ARR_IMPL_
+
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
 
-//#define ARR_DBG
-
-#ifdef ARR_DBG
-#define ARR_DBG_PROC_HDR \
-  puts(__func__);\
-  fflush(stdout);
-#else
-#define ARR_DBG_PROC_HDR
-#endif
-
-
-
-#define _pdiff(A,B) (((uint8_t*)A) - ((uint8_t*)B))
+#define _arr_pdiff(A,B) (((uint8_t*)A) - ((uint8_t*)B))
 
 ARR_API
 int arr_init(struct arr * arr, size_t esz) 
@@ -282,7 +300,8 @@ void arr_cleanup(struct arr * arr)
 }
 
 ARR_API
-void arr_clear(struct arr *arr) {
+void arr_clear(struct arr *arr)
+{
   memset(arr->mem, 0, arr->cnt * arr->esz);
   arr->cnt = 0;
 }
@@ -329,7 +348,6 @@ struct arr arr_new_place(void *mem, size_t esz, size_t cnt)
 
 static 
 void _arr_expand(struct arr * arr, size_t idx, size_t n) {
-  ARR_DBG_PROC_HDR;
 
   if(n == 0) return;
 
@@ -345,7 +363,6 @@ void _arr_expand(struct arr * arr, size_t idx, size_t n) {
 
 int arr_realloc(struct arr * arr, size_t ncap) 
 {
-  ARR_DBG_PROC_HDR;
   ARR_ASSERT(arr);
 
   ARR_ASSERT(arr->cnt <= ncap);
@@ -358,8 +375,8 @@ int arr_realloc(struct arr * arr, size_t ncap)
   return 0;
 }
 
-int arr_grow(struct arr * arr) {
-  ARR_DBG_PROC_HDR;
+int arr_grow(struct arr * arr)
+{
   return arr_realloc(arr, arr->cap ? arr->cap * 2 : 1);
 }
 
@@ -368,21 +385,21 @@ void arr_zero(struct arr *arr)
   memset(arr->mem, 0, arr->cap * arr->esz);
 }
 
-void * arr_lst(const struct arr * arr) {
-  ARR_DBG_PROC_HDR;
+void * arr_lst(const struct arr * arr)
+{
   ARR_ASSERT(arr);
   return ( arr->cnt ) ? arr_at(arr, arr->cnt - 1) : NULL;
 }
 
-void * arr_fst(const struct arr * arr) {
-  ARR_DBG_PROC_HDR;
+void * arr_fst(const struct arr * arr)
+{
   ARR_ASSERT(arr);
   return arr_at(arr, 0);
 }
 
 
-void * arr_push(struct arr * arr, const void * e) {
-  ARR_DBG_PROC_HDR;
+void * arr_push(struct arr * arr, const void * e)
+{
   ARR_ASSERT(arr);
 
   if(arr->cnt == arr->cap) 
@@ -399,8 +416,8 @@ void * arr_push(struct arr * arr, const void * e) {
 }
 
 
-void arr_pop(struct arr * arr) {
-  ARR_DBG_PROC_HDR;
+void arr_pop(struct arr * arr)
+{
   ARR_ASSERT(arr && arr->cnt);
   arr->cnt--;
 }
@@ -415,7 +432,7 @@ bool arr_belongs(const struct arr *arr, const void *e)
   if(!(arr_fst(arr) <= e && e <= arr_lst(arr)))
     return false;
 
-  size_t d = _pdiff(e, arr->mem);
+  size_t d = _arr_pdiff(e, arr->mem);
 
   if(!(d % arr->esz == 0))
     return false;
@@ -424,12 +441,12 @@ bool arr_belongs(const struct arr *arr, const void *e)
 }
 
 size_t _arr_idx(const struct arr *arr, const void *e) {
-  return ( _pdiff(e, arr->mem) / arr->esz);
+  return ( _arr_pdiff(e, arr->mem) / arr->esz);
 }
 
-size_t arr_idx(const struct arr *arr, const void *e) {
+size_t arr_idx(const struct arr *arr, const void *e)
+{
   void * lst = arr_lst(arr);
-  ARR_DBG_PROC_HDR;
 
   ARR_ASSERT( arr_belongs(arr, e) );
   return _arr_idx(arr, e);
@@ -437,7 +454,6 @@ size_t arr_idx(const struct arr *arr, const void *e) {
 
 void * arr_prev(const struct arr *arr, const void *e) 
 {
-  ARR_DBG_PROC_HDR;
   if(arr->cnt == 0) return NULL;
 
   void *lst = arr_lst(arr);
@@ -463,8 +479,8 @@ void * arr_next(const struct arr * arr, const void *e)
 }
 
 // FIXME
-void arr_append(struct arr * dst, struct arr * src) {
-  ARR_DBG_PROC_HDR;
+void arr_append(struct arr * dst, struct arr * src)
+{
   assert(dst->esz == src->esz);
 
   arr_for(void, e, src) {
@@ -487,8 +503,8 @@ void arr_append_raw(struct arr * dst, const void *data, size_t cnt)
 }
 
 
-void arr_prepend(struct arr * dst, struct arr * src) {
-  ARR_DBG_PROC_HDR;
+void arr_prepend(struct arr * dst, struct arr * src)
+{
   assert(dst->esz == src->esz);
 
   if(src->cnt == 0) return;
@@ -506,7 +522,6 @@ void arr_prepend(struct arr * dst, struct arr * src) {
 
 void arr_qsort(struct arr * arr, arr_cmp_proc *cmp) 
 {
-  ARR_DBG_PROC_HDR;
   qsort(arr->mem, arr->cnt, arr->esz, cmp);
 }
 
@@ -532,7 +547,6 @@ void arr_swap(struct arr *arr, void *a, void *b)
 }
 
 static void _arr_collapse(struct arr * arr, size_t idx, size_t n) {
-  ARR_DBG_PROC_HDR;
   ARR_ASSERT(arr->cnt >= idx + n);
 
   if(n == 0) return;
@@ -545,7 +559,8 @@ static void _arr_collapse(struct arr * arr, size_t idx, size_t n) {
   memmove(to, from, size);
 }
 
-int arr_remove_at(struct arr * arr, size_t idx) {
+int arr_remove_at(struct arr * arr, size_t idx)
+{
   ARR_ASSERT(arr && arr_alive(arr) && arr->cnt);
 
   _arr_collapse(arr, idx, 1);
@@ -554,12 +569,13 @@ int arr_remove_at(struct arr * arr, size_t idx) {
   return 0;
 }
 
-int arr_remove(struct arr *arr, void *e) {
-  ARR_DBG_PROC_HDR;
+int arr_remove(struct arr *arr, void *e)
+{
   return arr_remove_at(arr, arr_idx(arr, e));
 }
 
-int arr_insert_at(struct arr *arr, void *e, size_t idx) {
+int arr_insert_at(struct arr *arr, void *e, size_t idx)
+{
   if(arr->cnt == arr->cap) 
     ARR_ASSERT( !arr_grow(arr) );
 
@@ -577,7 +593,6 @@ int arr_insert_at(struct arr *arr, void *e, size_t idx) {
 
 void arr_uniq(struct arr * arr, arr_cmp_proc *cmp) 
 {
-  ARR_DBG_PROC_HDR;
   void *e, *lkp;
 
   for(e = arr_lst(arr); e; e = arr_prev(arr, e)) {
@@ -665,13 +680,15 @@ int arr_remove_in_loop(struct arr * arr, void * e, void ** const loop_e)
   return ret;
 }
 
-void arr_append_in_loop(struct arr * dst, struct arr * src, void ** const loop_e) {
+void arr_append_in_loop(struct arr * dst, struct arr * src, void ** const loop_e)
+{
   size_t idx = arr_idx(dst, *loop_e);
   arr_append(dst, src);
   *loop_e = arr_at(dst, idx);
 }
 
-void arr_prepend_in_loop(struct arr * dst, struct arr * src, void ** const loop_e) {
+void arr_prepend_in_loop(struct arr * dst, struct arr * src, void ** const loop_e)
+{
   size_t idx = arr_idx(dst, *loop_e);
   size_t before = dst->cnt;
   arr_prepend(dst, src);
@@ -680,10 +697,13 @@ void arr_prepend_in_loop(struct arr * dst, struct arr * src, void ** const loop_
 }
 
 
-void arr_print(struct arr *arr, const char * name) {
+void arr_print(struct arr *arr, const char * name)
+{
   if(name) printf("%s ", name);
   printf("{ cap: %zu, cnt: %zu, esz: %zu, mem: %p }" ,
         arr->cap, arr->cnt, arr->esz, arr->mem);
 }
 
-#endif /* #ifdef KK_ARR_IMPL */
+#endif /* _KK_ARR_IMPL_ */
+
+#endif /*  KK_ARR_IMPL */
