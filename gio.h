@@ -93,6 +93,9 @@ struct gio {
 };
 
 enum {
+  /* This flag signifies that the buffer is allocated and should be freed on
+   * close. 
+   */
   GIO_MEM_ALLOC = 0x1,
 
   /* This flag will try to automatically reallocate the underlying buffer
@@ -101,6 +104,8 @@ enum {
    *
    * If you pass a buffer into an init function and this flag is set, the buffer
    * must be reallocable and freeable with the KK_GIO_XALLOC function.
+   *
+   * This flag implies GIO_MEM_ALLOC
    */
   GIO_MEM_AUTOGROW = GIO_MEM_ALLOC | 0x2,
 
@@ -415,55 +420,63 @@ int _gio_mem_maybe_grow(struct gio_mem *gio, size_t sz)
   return 0;
 }
 
+
 KK_GIO_API
 ssize_t gio_write(gio_t *_gio, const void *buf, size_t sz)
 {
-  KK_GIO_TRACE(
-      "%s(): gio=%p { .type=%d }, buf=%p, sz=%zu\n", 
-      __func__, _gio, ((struct gio*)_gio)->type, buf, sz);
+  ssize_t ret = -1;
 
   if(!_gio)
-    return sz;
+    goto out;
 
   switch(((struct gio*)_gio)->type) {
   case GIO_MEM: {
     struct gio_mem *gio = (struct gio_mem*)_gio;
 
     if(_gio_mem_maybe_grow(gio, sz))
-      return -1;
+      goto out;
 
     assert(gio->sz >= gio->off);
     sz = GIO_MIN(sz, gio->sz - gio->off);
+    /* TODO: handle case when the buffer written from is already part of the buffer
+     * written to, i.e. memmove */
     memcpy(gio->buf + gio->off, buf, sz);
     gio->off += sz;
-    return sz;
-  }
+    ret = sz;
+  } break;
+
   case GIO_FILE: {
     struct gio_file *gio = (struct gio_file*)_gio;
     if(gio->fp)
-      return fwrite(buf, 1, sz, gio->fp);
+      ret = fwrite(buf, 1, sz, gio->fp);
     else
-      return write(gio->fd, buf, sz);
-  }
+      ret = write(gio->fd, buf, sz);
+  } break;
+
   case GIO_OPS: {
     struct gio_ops *gio = (struct gio_ops*)_gio;
     if(gio->write) 
-      return gio->write(gio, buf, sz);
-    else
-      return -1;
-  }
+      ret = gio->write(gio, buf, sz);
+  } break;
+
   defualt:
     KK_GIO_UNREACHABLE();
   }
-  return -1;
+out:
+#ifdef KK_GIO_ENABLE_TRACING
+  fprintf(stderr,
+      "%s(): gio=%p { .type=%d }, buf=%p, sz=%zu = %zd\n", 
+      __func__, _gio, ((struct gio*)_gio)->type, buf, sz, ret);
+  fflush(stderr);
+#endif
+  return ret;
 }
+
 
 KK_GIO_API
 ssize_t gio_read(gio_t *_gio, void *buf, size_t sz)
 {
-  KK_GIO_TRACE(
-      "%s(): gio=%p { .type=%d }, buf=%p, sz=%zu\n", 
-      __func__, _gio, ((struct gio*)_gio)->type, buf, sz);
+  ssize_t ret = -1;
 
   switch(((struct gio*)_gio)->type) {
   case GIO_MEM: {
@@ -472,27 +485,35 @@ ssize_t gio_read(gio_t *_gio, void *buf, size_t sz)
     sz = GIO_MIN(sz, gio->sz - gio->off);
     memcpy(buf, gio->buf + gio->off, sz);
     gio->off += sz;
-    return sz;
-  }
+  } break;
+
   case GIO_FILE: {
     struct gio_file *gio = (struct gio_file*)_gio;
     if(gio->fp)
-      return fread(buf, 1, sz, gio->fp);
+      ret = fread(buf, 1, sz, gio->fp);
     else
-      return read(gio->fd, buf, sz);
-  }
+      ret = read(gio->fd, buf, sz);
+  } break;
+
   case GIO_OPS: {
     struct gio_ops *gio = (struct gio_ops*)_gio;
     if(gio->read)
-      return gio->read(gio, buf, sz);
-    else
-      return -1;
-  }
+      ret = gio->read(gio, buf, sz);
+  } break;
+
   defualt:
     KK_GIO_UNREACHABLE();
   }
   return -1;
+#ifdef KK_GIO_ENABLE_TRACING
+  fprintf(stderr,
+      "%s(): gio=%p { .type=%d }, buf=%p, sz=%zu = %zd\n", 
+      __func__, _gio, ((struct gio*)_gio)->type, buf, sz, ret);
+  fflush(stderr);
+#endif
+  return ret;
 }
+
 
 KK_GIO_API
 off_t gio_seek(gio_t *_gio, off_t off, int whence)
@@ -569,11 +590,12 @@ out:
     fprintf(stderr,
         "%s(): gio=%p { .type=%d }, off=%d, whence=%d(%s) = %d\n", 
         __func__, _gio, ((struct gio*)_gio)->type, off, whence, whence_str, ret);
+    fflush(stderr);
   } while(0);
-  fflush(stderr);
 #endif
   return ret;
 }
+
 
 KK_GIO_API
 off_t gio_pipe(gio_t *src, gio_t *dst) 
@@ -581,6 +603,7 @@ off_t gio_pipe(gio_t *src, gio_t *dst)
   /* TODO: */
   KK_GIO_UNREACHABLE();
 }
+
 
 KK_GIO_API
 int gio_nprintf(gio_t *_gio, size_t maxn, const char *fmt, ...) 
@@ -597,6 +620,8 @@ int gio_nprintf(gio_t *_gio, size_t maxn, const char *fmt, ...)
   va_end(args);
 
   /* NOTE: We bypass gio_write */
+  /* TODO: handle case when the buffer written from is already part of the buffer
+   * written to, i.e. memmove */
   if(((struct gio *)_gio)->type == GIO_MEM) {
     struct gio_mem *gio = _gio;
 
